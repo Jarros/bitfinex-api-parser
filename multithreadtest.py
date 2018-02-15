@@ -4,16 +4,25 @@ import threading
 import time
 import coloredlogs, logging
 import sys
-import datetime
-from pandas import *
+from datetime import datetime
+import indicators
+import pandas as pd
 import numpy as np
 from queue import *
 from tkinter import *
 from btfxwss import BtfxWss
+import numpy as np
+import string as string
+import matplotlib.pyplot as plt
+import requests
+import talib as tb
+
+
 
 import mpl_finance as mplf
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+
 
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter, WeekdayLocator,\
@@ -23,8 +32,8 @@ globalz = multiprocessing.Array('i', 32)
 varz = []
 
 
-API_KEY = "your api key here"
-API_SECRET = "your secret api key here"
+API_KEY = "your api key"
+API_SECRET = "your api secret"
 
 class Application(Frame):
     def create_widgets(self):
@@ -40,10 +49,27 @@ class Application(Frame):
         self.launch_button['command'] = self.launch
         self.launch_button.pack({'side': 'bottom'})
 
+        self.data_button = Button(self)
+        self.data_button['text'] = 'CANDLES'
+        self.data_button['fg'] = 'BLUE'
+        self.data_button['command'] = self.data
+        self.data_button.pack({'side': 'bottom'})
+
+        self.sell_button = Button(self)
+        self.sell_button['text'] = 'SELL'
+        self.sell_button['fg'] = 'YELLOW'
+        self.sell_button['command'] = self.sell
+        self.sell_button.pack({'side': 'bottom'})
+
+        self.buy_button = Button(self)
+        self.buy_button['text'] = 'BUY'
+        self.buy_button['fg'] = 'MAGENTA'
+        self.buy_button['command'] = self.buy
+        self.buy_button.pack({'side': 'bottom'})
+
         for i in range(32):
             var = StringVar()
             varz.append(var)
-
 
 
         self.labelText = "kekuk"
@@ -65,7 +91,7 @@ class Application(Frame):
         self.label1.pack({'side': 'bottom'})
         #self.label1.pack()
 
-        self.w = Canvas(self, width=1024, height=512)
+        self.w = Canvas(self, width=512, height=256)
         self.w.pack()
 
         self.w.create_line(0, 0, 200, 100)
@@ -79,6 +105,73 @@ class Application(Frame):
     def stop(self):
         launch_flag.value=-1
 
+    def buy(self):
+        launch_flag.value=6
+
+    def sell(self):
+        pass
+
+    def data(self):
+        #120 candlov max za zapros
+        #BTC,ETH,XRP,EOS,ETH,OMG,BCH,IOTA,LTC,NEO,XRP,ELF,EO
+        #url = "https://api.bitfinex.com/v2/candles/trade:5m:tBTCUSD/hist?start=1497887100000&end=1497922800000&limit=1000"
+        url = "https://api.bitfinex.com/v2/candles/trade:3h:tETCUSD/hist?limit=700"
+        #start = datetime.utcnow()
+
+        response = requests.request("GET", url)
+
+        time.sleep(1)
+
+        with open('myRest.ts', 'w') as file:
+
+            #for i in range(len(qq[0][0])):
+            #stri = (str(qq[0][0][i]))
+            file.write((response.text.replace('],[','\n').replace('[[','').replace(']]','')))
+            #file.write("\n")
+
+        time.sleep(1)
+        loaded = pd.read_csv('myRest.ts', delimiter=',', names=['Timestamp', 'Open', 'Close', 'High', 'Low', 'Volume'])
+
+        loaded = loaded[::-1]
+        #loaded.reindex(index=loaded.index[::-1])
+
+        loaded = indicators.HA(loaded)
+        #loaded = indicators.chaikin_oscillator(loaded)
+        #loaded = indicators.chaikin_oscillator2(loaded)
+
+
+
+        #loaded = indicators.moving_average(loaded,10)
+        #loaded = indicators.exponential_moving_average(loaded,10)
+
+        #loaded = indicators.acc_dist(loaded)
+        #loaded = indicators.chaikin_oscillator(loaded)
+
+        chaikin = tb.ADOSC(high=loaded['HA_High'].values, low=loaded['HA_Low'].values, close=loaded['HA_Close'].values, volume=loaded['Volume'].values, fastperiod=3, slowperiod=10)
+        #loaded = indicators.chaikin_oscillator2(loaded)
+
+        loaded = loaded.join(pd.Series(chaikin,name='TALib_Chaikin'))
+        #loaded = indicators.accumulation_distribution(loaded,0)
+
+        #loaded = indicators.backtest(loaded)
+        #loaded=np.loadtxt('myRest.ts',delimiter=',')#,ndmin=2)
+
+        #logging.info(type(loaded))
+
+        logging.info(chaikin)
+
+        #logging.info(loaded.get_value(999, 'Balance'))
+
+        with open('backtest', 'w') as file:
+
+            #for i in range(len(qq[0][0])):
+            #stri = (str(qq[0][0][i]))
+            file.write(loaded.to_string())
+            #chaikin.tofile(file)
+
+
+        #first = False
+        #launch_flag.value=-1
 
     def __init__(self, master=None):
         Frame.__init__(self, master)
@@ -97,15 +190,19 @@ class Application(Frame):
         #    varz[i].set(globalz[i])
 
         time = globalz[30]+60*60*3
-        varz[30].set("Time: " + str(datetime.utcfromtimestamp(time)) + " ("+ str(time) + ")")
+        #varz[30].set("Time: " + str(pd.datetime.utcfromtimestamp(time)) + " ("+ str(time-datetime.utcnow()) + ")")
         time = globalz[0]+60*60*3
-        varz[0].set("Timestamp: " + str(datetime.utcfromtimestamp(time)) + " ("+ str(time) + ")")
+        varz[0].set("Timestamp: " + str(pd.datetime.utcfromtimestamp(time)) + " ("+ str(time) + ")")
         varz[1].set("Open: " + str(globalz[1]))
         varz[2].set("Close: " + str(globalz[2]))
         varz[3].set("High: " + str(globalz[3]))
         varz[4].set("Low: " + str(globalz[4]))
         varz[5].set("Volume: " + str(globalz[5]/1000))
         varz[6].set("Wallet: " + str(globalz[6]))
+
+        if varz[31]==1:
+            varz[6].set("аагага: " + str(globalz[6]))
+
         #logging.critical(self.xx.get())
         self.master.after(250, self.poll)
         #, width=100)
@@ -122,6 +219,10 @@ def worker_function(quit_flag,launch_flag,globalz):
     wss = None
     qq = None
     first = True
+    order = False
+    OCHLVlast=0
+    OCHLVcur=0
+
     while not quit_flag.value:
 
         if launch_flag.value == 5:
@@ -136,7 +237,8 @@ def worker_function(quit_flag,launch_flag,globalz):
                     wss.authenticate()
                 # Subscribe to some channels
                 wss.subscribe_to_ticker('BTCUSD')
-                wss.subscribe_to_candles('BTCUSD')
+                wss.subscribe_to_candles('BTCUSD', '15m')
+                wss.subscribe_to_candles('BTCUSD', '1m')
                 wss.subscribe_to_order_book('BTCUSD')
 
             # Do something else
@@ -145,26 +247,34 @@ def worker_function(quit_flag,launch_flag,globalz):
                 pass
 
             # Accessing data stored in BtfxWss:
-            ticker_q = wss.candles('BTCUSD')  # returns a Queue object for the pair.
+            ticker_q = wss.candles('BTCUSD', '1m')  # returns a Queue object for the pair.
             wallet=wss.wallets
+
 
             while not ticker_q.empty():
                 qq=np.asarray(ticker_q.get())
                 #globalz[0] = int(np.asarray(qq)[1])
-                if first or type(qq[0][0][0])==list:
+                if type(qq[0][0][0])==list:
+                    first = True
+                if first:
                     globalz[0] = int(((qq)[0][0][0][0])/1000)
                     #globalz[1] =
                     logging.debug(((qq)[0][0][0][0])/1000)
+                    #loggin.debug()
                     #logging.debug(type((qq)[0][0][0][0]))
                     #logging.debug(type((qq)[0][0][0]))
                     #logging.debug(type((qq)[0][0]))
                     #logging.debug(type((qq)[0]))
                     #logging.debug(type((qq)))
-                    for i in range(len(qq[0][0])):
-                        logging.debug(qq[0][0][i])
+
+
 
                     with open('my.ts', 'w') as file:
-                        file.write('whit')
+
+                        for i in range(len(qq[0][0])):
+                            stri = (str(qq[0][0][i]))
+                            file.write((stri))
+                            file.write("\n")
 
                     first = False
                 else:
@@ -173,17 +283,17 @@ def worker_function(quit_flag,launch_flag,globalz):
                     globalz[5] = int(((qq)[0][0][5])*1000)
                     globalz[6] = int(((qq)[0][0][5])*1000)
 
+                    #globalz[0] =
+
                     for i in range(1,5):
                         globalz[i] = int((np.asarray(qq)[0][0][i]))
 
                     #logging.debug(counter)
-                    #logging.debug((np.asarray(qq)[0][0][1]))
+                    logging.debug((np.asarray(qq)[0][0]))
                     #logging.debug((np.asarray(qq)[0][0][1]))
 
             if wallet.empty() == False:
                 logging.debug(wallet.get())
-
-
 
 
             #ticker_q = wss.candles('BTCUSD')  # returns a Queue object for the pair.
@@ -210,6 +320,28 @@ def worker_function(quit_flag,launch_flag,globalz):
                 established = False
                 first = True
 
+        elif launch_flag.value == 6:
+            if order == False:
+                logging.info("Ordering some shit at # %s" % counter)
+
+                order = {
+                "cid": 373617,  #change to the API_Key Number
+                "type": "LIMIT",
+                "symbol": "tEOSUSD",
+                "amount": "2",
+                "price": "14",
+                "hidden": 0,
+                "postonly": 1
+                }
+
+                wss.new_order(**order)
+
+                launch_flag.value = 7
+                order = True
+
+                time.sleep(3)
+                logging.info(wss.orders.get())
+
 format = '%(levelname)s: %(filename)s: %(lineno)d: %(message)s'
 logging.basicConfig(level=logging.DEBUG, format=format)
 coloredlogs.install(level='DEBUG')
@@ -217,7 +349,7 @@ root = Tk()
 app = Application(master=root)
 quit_flag = multiprocessing.Value('i', int(False))
 launch_flag = multiprocessing.Value('i', int(False))
-launch_flag.value=5
+launch_flag.value=4
 worker_thread = threading.Thread(target=worker_function, args=(quit_flag,launch_flag,globalz,))
 worker_thread.start()
 logging.info("quit_flag.value = %s" % bool(quit_flag.value))
