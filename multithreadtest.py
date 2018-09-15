@@ -1,10 +1,8 @@
-from tkinter import *
 import multiprocessing
 import threading
 import time
 import coloredlogs, logging
 import sys
-from datetime import datetime
 import indicators
 import pandas as pd
 import numpy as np
@@ -18,8 +16,13 @@ import requests
 import talib as tb
 
 
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
+from mpl_finance import candlestick_ohlc
+import datetime as dt
 
-import mpl_finance as mplf
+
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
@@ -32,8 +35,8 @@ globalz = multiprocessing.Array('i', 32)
 varz = []
 
 
-API_KEY = "your api key"
-API_SECRET = "your api secret"
+API_KEY = ""
+API_SECRET = ""
 
 class Application(Frame):
     def create_widgets(self):
@@ -89,15 +92,25 @@ class Application(Frame):
         self.label3.pack({'side': 'bottom'})
         self.label2.pack({'side': 'bottom'})
         self.label1.pack({'side': 'bottom'})
-        #self.label1.pack()
 
-        self.w = Canvas(self, width=512, height=256)
-        self.w.pack()
+        f = Figure(figsize=(5, 4), dpi=100)
+        a = f.add_subplot(111)
+        t = np.arange(0.0, 3.0, 0.01)
+        s = np.sin(2*3.1427*t)
+        #a.plot(t, s)
+        #self.w = FigureCanvasTkAgg(f, master=root)
+        #self.w.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
 
-        self.w.create_line(0, 0, 200, 100)
-        self.w.create_line(0, 100, 200, 0, fill="red", dash=(4, 4))
 
-        self.w.create_rectangle(50, 25, 150, 75, fill="blue")
+
+        #self.w.pack()
+        #self.w.create_line(0, 0, 200, 100)
+        #self.w.create_line(0, 100, 200, 0, fill="red", dash=(4, 4))
+
+        #self.w.create_rectangle(50, 25, 150, 75, fill="blue")
+
+
+
 
     def launch(self):
         launch_flag.value=5
@@ -115,7 +128,7 @@ class Application(Frame):
         #120 candlov max za zapros
         #BTC,ETH,XRP,EOS,ETH,OMG,BCH,IOTA,LTC,NEO,XRP,ELF,EO
         #url = "https://api.bitfinex.com/v2/candles/trade:5m:tBTCUSD/hist?start=1497887100000&end=1497922800000&limit=1000"
-        url = "https://api.bitfinex.com/v2/candles/trade:3h:tETCUSD/hist?limit=700"
+        url = "https://api.bitfinex.com/v2/candles/trade:1D:tETCUSD/hist?start=1502496000000&limit=1000"
         #start = datetime.utcnow()
 
         response = requests.request("GET", url)
@@ -130,12 +143,19 @@ class Application(Frame):
             #file.write("\n")
 
         time.sleep(1)
+
         loaded = pd.read_csv('myRest.ts', delimiter=',', names=['Timestamp', 'Open', 'Close', 'High', 'Low', 'Volume'])
 
+
         loaded = loaded[::-1]
-        #loaded.reindex(index=loaded.index[::-1])
+
+
+        #loaded = indicators.randomwalk(loaded)
+
+        #loaded.reindex(indeex=loaded.index[::-1])
 
         loaded = indicators.HA(loaded)
+
         #loaded = indicators.chaikin_oscillator(loaded)
         #loaded = indicators.chaikin_oscillator2(loaded)
 
@@ -151,27 +171,161 @@ class Application(Frame):
         #loaded = indicators.chaikin_oscillator2(loaded)
 
         loaded = loaded.join(pd.Series(chaikin,name='TALib_Chaikin'))
+
+        #upperband, middleband, lowerband = tb.BBANDS(close=loaded['Close'].values, timeperiod=20, nbdevup=2, nbdevdn=2, matype=0)
+
+        #loaded = loaded.join(pd.Series(upperband,name='BOLLINGER_upper'))
+        #loaded = loaded.join(pd.Series(middleband,name='BOLLINGER_middle'))
+        #loaded = loaded.join(pd.Series(lowerband,name='BOLLINGER_lower'))
+
         #loaded = indicators.accumulation_distribution(loaded,0)
 
-        #loaded = indicators.backtest(loaded)
+        loaded = indicators.nulltest(loaded)
+
+        #loaded = indicators.backtest(loaded)#backtest(loaded)
+        #loaded = indicators.backtest_bull(loaded)
         #loaded=np.loadtxt('myRest.ts',delimiter=',')#,ndmin=2)
 
         #logging.info(type(loaded))
 
-        logging.info(chaikin)
+        #logging.info(loaded['Graph'].values)
 
         #logging.info(loaded.get_value(999, 'Balance'))
 
         with open('backtest', 'w') as file:
-
-            #for i in range(len(qq[0][0])):
-            #stri = (str(qq[0][0][i]))
             file.write(loaded.to_string())
-            #chaikin.tofile(file)
 
 
-        #first = False
-        #launch_flag.value=-1
+        ########################################################### PLOT NUMBER ONE - GRAPH
+
+        #fig = plt.figure()
+        ax1 = plt.subplot2grid((1,1), (0,0))
+
+        timestamps = loaded['Timestamp'].values
+        timestamps=np.multiply(timestamps, 0.001)
+
+        balancep = loaded['Balance'].values
+        openp = loaded['HA_Open'].values
+        highp = loaded['HA_High'].values
+        lowp = loaded['HA_Low'].values
+        closep = loaded['HA_Close'].values
+        volumep = loaded['Volume'].values
+
+        x = 0
+        ohlc = []
+        datep=[mdates.date2num(dt.datetime.fromtimestamp(ts)) for ts in timestamps]
+        y = len(datep)
+
+        sizemultiplier = 3*8
+
+
+        while x < y:
+            append_me = datep[x], openp[x], highp[x], lowp[x], closep[x], volumep[x]
+            ohlc.append(append_me)
+
+            if loaded.at[x,'Graph']==1:
+                plt.text(datep[x], closep[x]+0.4*sizemultiplier, "o", fontsize=12, color='k')
+                plt.plot([datep[x], datep[x]], [closep[x], closep[x]+0.35*sizemultiplier], color='k', linestyle='-', linewidth=2)
+            else:
+                if loaded.at[x,'Graph']==-1:
+                    if balancep[x]-balancep[x-1] > 0:
+                        coloris = 'g'
+                    else:
+                        coloris = 'r'
+                    plt.text(datep[x], closep[x]+0.4*sizemultiplier, "c"+str(round(balancep[x]-balancep[x-1],3)), fontsize=12, color=coloris)
+                    plt.plot([datep[x], datep[x]], [closep[x], closep[x]+0.35*sizemultiplier], color='k', linestyle='-', linewidth=2)
+                else:
+                    if loaded.at[x,'Graph']==2:
+                        plt.text(datep[x], closep[x]+0.4*sizemultiplier, "oS", fontsize=12, color='k')
+                        plt.plot([datep[x], datep[x]], [closep[x], closep[x]+0.35*sizemultiplier], color='k', linestyle='-', linewidth=2)
+                    else:
+                        if loaded.at[x,'Graph']==-2:
+                            if balancep[x]-balancep[x-1] < 0:
+                                coloris = 'r'
+                            else:
+                                coloris = 'g'
+                            plt.text(datep[x], closep[x]+0.4*sizemultiplier, "cS"+str(round(balancep[x]-balancep[x-1],3)), fontsize=12, color=coloris)
+                            plt.plot([datep[x], datep[x]], [closep[x], closep[x]+0.35*sizemultiplier], color='k', linestyle='-', linewidth=2)
+            x+=1
+
+        candlestick_ohlc(ax1, ohlc, width=0.02*sizemultiplier, colorup='#77d879', colordown='#db3f3f')
+
+        plt.plot_date(datep, balancep,fmt='-')
+
+        for label in ax1.xaxis.get_ticklabels():
+            label.set_rotation(45)
+
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        ax1.xaxis.set_major_locator(mticker.MaxNLocator(10))
+        ax1.grid(True)
+
+
+        plt.xlabel('Date')
+        plt.ylabel('Price')
+        plt.title('ETC/USD, 3h')
+        plt.legend()
+        plt.subplots_adjust(left=0.09, bottom=0.20, right=0.94, top=0.90, wspace=0.2, hspace=0)
+        plt.show()
+
+
+        ########################################################### PLOT NUMBER TWO - REVENUE
+        '''
+        #fig = plt.figure()
+        ax12 = plt.subplot2grid((1,1), (0,0))
+
+        #timestamps = loaded['Timestamp'].values
+        #timestamps=np.multiply(timestamps, 0.001)
+
+        #balancep = loaded['Balance'].values
+
+        x = 0
+        #y = len(datep)
+        ohlc = []
+        #datep=[mdates.date2num(dt.datetime.fromtimestamp(ts)) for ts in timestamps]
+        #y = len(datep)
+
+        sizemultiplier = 3
+
+
+        while x < y:
+            append_me = datep[x], openp[x], highp[x], lowp[x], closep[x], volumep[x]
+            ohlc.append(append_me)
+
+            if loaded.at[x,'Graph']==1:
+                plt.text(datep[x], closep[x]+0.4*sizemultiplier, "o", fontsize=12, color='k')
+                plt.plot([datep[x], datep[x]], [closep[x], closep[x]+0.35*sizemultiplier], color='k', linestyle='-', linewidth=2)
+            else:
+                if loaded.at[x,'Graph']==-1:
+                    if balancep[x]-balancep[x-1] > 0:
+                        coloris = 'g'
+                    else:
+                        coloris = 'r'
+                    plt.text(datep[x], closep[x]+0.4*sizemultiplier, "c"+str(round(balancep[x]-balancep[x-1],3)), fontsize=12, color=coloris)
+                    plt.plot([datep[x], datep[x]], [closep[x], closep[x]+0.35*sizemultiplier], color=coloris, linestyle='-', linewidth=2)
+            x+=1
+
+        plt.plot_date(datep, balancep)
+
+        #candlestick_ohlc(ax12, ohlc, width=0.02*sizemultiplier, colorup='#77d879', colordown='#db3f3f')
+
+        for label in ax12.xaxis.get_ticklabels():
+            label.set_rotation(45)
+
+        ax12.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        ax12.xaxis.set_major_locator(mticker.MaxNLocator(10))
+        ax12.grid(True)
+
+        plt.xlabel('Date')
+        plt.ylabel('$')
+        plt.title('Profit')
+        plt.legend()
+        plt.subplots_adjust(left=0.09, bottom=0.20, right=0.94, top=0.90, wspace=0.2, hspace=0)
+        plt.show()
+        '''
+
+
+
+
 
     def __init__(self, master=None):
         Frame.__init__(self, master)
